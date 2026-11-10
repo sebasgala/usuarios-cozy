@@ -13,7 +13,7 @@ import { opcionesConexion } from './opciones-conexion';
 export default new DataSource({
   type: 'postgres',
   ...opcionesConexion(),
-  entities: [join(__dirname, '..', 'modules', '{usuarios,catalogo,disponibilidad,reservas,comun}', 'entities', '*.entity.{ts,js}')],
+  entities: [join(__dirname, '..', 'modules', '{usuarios,catalogo,disponibilidad,reservas,comun,clientes}', 'entities', '*.entity.{ts,js}')],
   // Solo .js: en dist también hay .d.ts y no son migraciones.
   migrations: [join(__dirname, 'migrations', '*.js')],
   migrationsTableName: 'migraciones',

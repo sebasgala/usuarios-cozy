@@ -5,6 +5,7 @@ import { CommonModule } from './common/common.module';
 import { crearControladorSaludModulo } from './health/salud-modulo';
 import { ComunDominioModule } from './modules/comun/comun.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
+import { ClientesModule } from './modules/clientes/clientes.module';
 
 const SaludUsuariosController = crearControladorSaludModulo('usuarios');
 
@@ -16,6 +17,7 @@ const SaludUsuariosController = crearControladorSaludModulo('usuarios');
     CommonModule,
     ComunDominioModule,
     UsuariosModule,
+    ClientesModule,
   ],
   controllers: [SaludUsuariosController],
 })
