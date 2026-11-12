@@ -8,6 +8,7 @@ export interface SesionJwt {
   id: string;
   rol: RolUsuario;
   estado: EstadoUsuario;
+  alojamientoId: number | null;
 }
 
 // Petición ya autenticada: JwtAuthGuard deja aquí la sesión que trae el token.
@@ -17,8 +18,10 @@ export interface PeticionAutenticada extends Request {
 
 // Contenido del JWT: el id (sub) y el rol y el estado que tenía la cuenta cuando se emitió (login o renovación).
 // Un token anterior a la fase 8.1 (solo `sub`) ya no sirve: hay que iniciar sesión otra vez.
+// Bloque R: alojamientoId viaja en el JWT para que reservas/ no dependa del catálogo en cada petición.
 export interface CargaJwt {
   sub: string;
   rol: RolUsuario;
   estado: EstadoUsuario;
+  alojamientoId?: number | null;
 }

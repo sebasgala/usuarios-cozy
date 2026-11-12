@@ -78,7 +78,8 @@ export class AuthService {
 
   // Token nuevo con el rol y el estado de la cuenta (login y renovación)
   private async sesionNueva(usuario: Usuario): Promise<LoginResponseDto> {
-    const access_token = await this.jwtService.signAsync({ sub: usuario.id, rol: usuario.rol, estado: usuario.estado } satisfies CargaJwt);
+    const carga: CargaJwt = { sub: usuario.id, rol: usuario.rol, estado: usuario.estado, alojamientoId: usuario.alojamientoId ?? null };
+    const access_token = await this.jwtService.signAsync(carga);
     return { access_token, token_type: 'Bearer', expires_in: SEGUNDOS_DE_VIGENCIA, usuario: this.aRespuesta(usuario) };
   }
 
@@ -102,8 +103,12 @@ export class AuthService {
     if (typeof carga?.sub !== 'string' || !ES_UUID.test(carga.sub) || !rolesValidos.includes(carga.rol) || !estadosValidos.includes(carga.estado)) {
       throw new NoAutenticadoException('El token no es válido o venció: inicia sesión de nuevo');
     }
+    // Bloque R: recepción sin alojamientoId en el token = token anterior al Bloque R → rechazar
+    if (carga.rol === RolUsuario.RECEPCION && !carga.alojamientoId) {
+      throw new NoAutenticadoException('El token no es válido o venció: inicia sesión de nuevo');
+    }
     this.exigirCuentaActiva(carga);
-    return { id: carga.sub, rol: carga.rol, estado: carga.estado };
+    return { id: carga.sub, rol: carga.rol, estado: carga.estado, alojamientoId: carga.alojamientoId ?? null };
   }
 
   // Para las rutas del contrato, que no exigen login: si llega un token válido de una cuenta activa se usa

@@ -11,3 +11,8 @@ export const Roles = (...roles: RolUsuario[]) => SetMetadata(CLAVE_ROLES, roles)
 export const UsuarioActual = createParamDecorator((_: unknown, contexto: ExecutionContext): SesionJwt => {
   return contexto.switchToHttp().getRequest<PeticionAutenticada>().usuario;
 });
+
+// alojamientoId del token (Bloque R): number | null.
+export const AlojamientoActual = createParamDecorator((_: unknown, contexto: ExecutionContext): number | null => {
+  return contexto.switchToHttp().getRequest<PeticionAutenticada>().usuario?.alojamientoId ?? null;
+});
