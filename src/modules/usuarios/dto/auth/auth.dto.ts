@@ -88,6 +88,12 @@ export class UsuarioResponseDto {
   @ApiProperty({ enum: EstadoUsuario, example: EstadoUsuario.ACTIVO })
   estado: EstadoUsuario;
 
+  @ApiProperty({ type: 'integer', nullable: true, description: 'Alojamiento de la cuenta (null para superadmin y clientes)', example: 7 })
+  alojamientoId: number | null;
+
+  @ApiProperty({ description: 'true si la cuenta nació con clave temporal y debe cambiarla en el primer ingreso', example: false })
+  requiereCambioClave: boolean;
+
   @ApiProperty({ format: 'date-time' })
   createdAt: string;
 }

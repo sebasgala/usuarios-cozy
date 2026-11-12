@@ -1,9 +1,10 @@
 import { Request } from 'express';
 import { EstadoUsuario, RolUsuario } from '../entities/usuario.entity';
 
-// Sesión que el token deja en la petición (fase 8.1): el id, el rol y el estado con que se emitió el token.
+// Sesión que el token deja en la petición (fase 8.1): el id, el rol, el estado y el alojamiento con que se emitió el token.
 // JwtAuthGuard solo verifica la firma y el vencimiento: NO lee la cuenta. Un cambio de rol o una suspensión se nota
 // cuando vence el token (10 minutos) o cuando falla la renovación (POST /auth/renovar, que sí lee la cuenta).
+// Bloque R (R3): `alojamientoId` es la ÚNICA fuente para filtrar por alojamiento; nunca se toma del cuerpo de la petición.
 export interface SesionJwt {
   id: string;
   rol: RolUsuario;
@@ -16,9 +17,9 @@ export interface PeticionAutenticada extends Request {
   usuario: SesionJwt;
 }
 
-// Contenido del JWT: el id (sub) y el rol y el estado que tenía la cuenta cuando se emitió (login o renovación).
-// Un token anterior a la fase 8.1 (solo `sub`) ya no sirve: hay que iniciar sesión otra vez.
-// Bloque R: alojamientoId viaja en el JWT para que reservas/ no dependa del catálogo en cada petición.
+// Contenido del JWT: el id (sub), el rol, el estado y el alojamiento que tenía la cuenta cuando se emitió (login o renovación).
+// Un token anterior a la fase 8.1 (solo `sub`) ya no sirve: hay que iniciar sesión otra vez. Un token anterior al Bloque R
+// (sin `alojamientoId`) se acepta como cuenta sin alojamiento.
 export interface CargaJwt {
   sub: string;
   rol: RolUsuario;

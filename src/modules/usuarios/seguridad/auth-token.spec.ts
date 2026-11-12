@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
 import { EstadoUsuario, RolUsuario, Usuario } from '../entities/usuario.entity';
 import { AuthService, SEGUNDOS_DE_VIGENCIA } from './auth.service';
 import { construirOpcionesJwt } from './claves-jwt';
@@ -59,7 +60,7 @@ describe('token de la cuenta (fase 8.1)', () => {
     const { access_token } = await auth.renovar(ID);
     assert.equal(lecturas.n, 1); // la renovación sí la lee
     const sesion = await auth.sesionDelToken(bearer(access_token));
-    assert.deepEqual(sesion, { id: ID, rol: RolUsuario.CLIENTE, estado: EstadoUsuario.ACTIVO });
+    assert.deepEqual(sesion, { id: ID, rol: RolUsuario.CLIENTE, estado: EstadoUsuario.ACTIVO, alojamientoId: null });
     assert.equal(lecturas.n, 1); // validar no agregó ninguna lectura
   });
 
@@ -95,6 +96,15 @@ describe('token de la cuenta (fase 8.1)', () => {
     assert.equal(await estadoHttp(async () => auth.sesionDelToken(bearer(await jwt.signAsync({ sub: ID })))), 401);
     assert.equal(await estadoHttp(async () => auth.sesionDelToken(bearer(await jwt.signAsync({ sub: ID, rol: 'rey', estado: 'activo' })))), 401);
     assert.equal(await estadoHttp(async () => auth.sesionDelToken(bearer(await jwt.signAsync({ sub: 'no-es-uuid', rol: 'cliente', estado: 'activo' })))), 401);
+  });
+
+  it('Bloque R: el token lleva alojamientoId y la sesión lo devuelve; una recepción sin alojamiento no entra', async () => {
+    const { auth, jwt } = servicio(cuenta({ rol: RolUsuario.RECEPCION, alojamientoId: 7 }));
+    const { access_token } = await auth.renovar(ID);
+    assert.equal((jwt.decode(access_token) as { alojamientoId: number }).alojamientoId, 7);
+    assert.deepEqual(await auth.sesionDelToken(bearer(access_token)), { id: ID, rol: RolUsuario.RECEPCION, estado: EstadoUsuario.ACTIVO, alojamientoId: 7 });
+    assert.equal(await estadoHttp(async () => auth.sesionDelToken(bearer(await jwt.signAsync({ sub: ID, rol: 'recepcion', estado: 'activo' })))), 401);
+    assert.equal(await estadoHttp(async () => auth.sesionDelToken(bearer(await jwt.signAsync({ sub: ID, rol: 'administrador', estado: 'activo', alojamientoId: 'x' })))), 401);
   });
 
   it('un token firmado con otra clave: 401', async () => {
@@ -151,9 +161,36 @@ describe('token de la cuenta (fase 8.1)', () => {
     assert.equal(cabeceraJwt.alg, 'RS256');
 
     const sesion = await authOtroModulo.sesionDelToken(bearer(access_token));
-    assert.deepEqual(sesion, { id: ID, rol: RolUsuario.ADMINISTRADOR, estado: EstadoUsuario.ACTIVO });
+    assert.deepEqual(sesion, { id: ID, rol: RolUsuario.ADMINISTRADOR, estado: EstadoUsuario.ACTIVO, alojamientoId: null });
 
     // Un módulo que solo verifica no tiene clave privada y no puede emitir tokens
     await assert.rejects(() => jwtOtroModulo.signAsync({ sub: ID, rol: 'cliente', estado: 'activo' }));
+  });
+
+  it('login: con SUPERADMIN devuelve 200 OK con JWT válido (rol superadmin y alojamientoId: null)', async () => {
+    const passwordHash = await bcrypt.hash('SuperAdmin123!', 10);
+    const superAdmin = cuenta({
+      email: 'superadmin@cozy.test',
+      rol: RolUsuario.SUPERADMIN,
+      passwordHash,
+      alojamientoId: null,
+      requiereCambioClave: false,
+    });
+    const { auth, jwt } = servicio(superAdmin);
+    const res = await auth.login({ email: 'superadmin@cozy.test', password: 'SuperAdmin123!' });
+
+    assert.equal(res.token_type, 'Bearer');
+    assert.equal(res.expires_in, 600);
+    assert.equal(res.usuario.rol, RolUsuario.SUPERADMIN);
+    assert.equal(res.usuario.alojamientoId, null);
+    assert.equal(res.usuario.requiereCambioClave, false);
+
+    const carga = jwt.decode(res.access_token) as { sub: string; rol: string; estado: string; alojamientoId: unknown };
+    assert.equal(carga.sub, ID);
+    assert.equal(carga.rol, RolUsuario.SUPERADMIN);
+    assert.equal(carga.alojamientoId, null);
+
+    const sesion = await auth.sesionDelToken(bearer(res.access_token));
+    assert.deepEqual(sesion, { id: ID, rol: RolUsuario.SUPERADMIN, estado: EstadoUsuario.ACTIVO, alojamientoId: null });
   });
 });

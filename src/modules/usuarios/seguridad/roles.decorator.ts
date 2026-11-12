@@ -7,12 +7,13 @@ export const CLAVE_ROLES = 'roles';
 // Roles que pueden entrar a la ruta o al controlador. Sin @Roles, basta con haber iniciado sesión.
 export const Roles = (...roles: RolUsuario[]) => SetMetadata(CLAVE_ROLES, roles);
 
-// Sesión del token de la petición: id, rol y estado (solo en rutas con JwtAuthGuard).
+// Sesión del token de la petición: id, rol, estado y alojamiento (solo en rutas con JwtAuthGuard).
 export const UsuarioActual = createParamDecorator((_: unknown, contexto: ExecutionContext): SesionJwt => {
   return contexto.switchToHttp().getRequest<PeticionAutenticada>().usuario;
 });
 
-// alojamientoId del token (Bloque R): number | null.
+// Alojamiento del token (Bloque R): null para el superadmin y las cuentas sin alojamiento. Es lo único que un servicio
+// debe usar para filtrar por alojamiento; nunca un parámetro de la petición.
 export const AlojamientoActual = createParamDecorator((_: unknown, contexto: ExecutionContext): number | null => {
   return contexto.switchToHttp().getRequest<PeticionAutenticada>().usuario?.alojamientoId ?? null;
 });

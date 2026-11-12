@@ -76,7 +76,7 @@ export class AuthService {
     return this.sesionNueva(usuario);
   }
 
-  // Token nuevo con el rol y el estado de la cuenta (login y renovación)
+  // Token nuevo con el rol, el estado y el alojamiento de la cuenta (login y renovación)
   private async sesionNueva(usuario: Usuario): Promise<LoginResponseDto> {
     const carga: CargaJwt = { sub: usuario.id, rol: usuario.rol, estado: usuario.estado, alojamientoId: usuario.alojamientoId ?? null };
     const access_token = await this.jwtService.signAsync(carga);
@@ -100,15 +100,17 @@ export class AuthService {
     // Un token anterior a la fase 8.1 (solo `sub`) o con datos que no existen no sirve
     const rolesValidos: string[] = Object.values(RolUsuario);
     const estadosValidos: string[] = Object.values(EstadoUsuario);
-    if (typeof carga?.sub !== 'string' || !ES_UUID.test(carga.sub) || !rolesValidos.includes(carga.rol) || !estadosValidos.includes(carga.estado)) {
+    const alojamientoId = carga?.alojamientoId ?? null;
+    const alojamientoValido = alojamientoId === null || (Number.isInteger(alojamientoId) && alojamientoId > 0);
+    if (typeof carga?.sub !== 'string' || !ES_UUID.test(carga.sub) || !rolesValidos.includes(carga.rol) || !estadosValidos.includes(carga.estado) || !alojamientoValido) {
       throw new NoAutenticadoException('El token no es válido o venció: inicia sesión de nuevo');
     }
-    // Bloque R: recepción sin alojamientoId en el token = token anterior al Bloque R → rechazar
-    if (carga.rol === RolUsuario.RECEPCION && !carga.alojamientoId) {
+    // Bloque R: una cuenta de recepción sin alojamiento no puede operar nada
+    if (carga.rol === RolUsuario.RECEPCION && alojamientoId === null) {
       throw new NoAutenticadoException('El token no es válido o venció: inicia sesión de nuevo');
     }
     this.exigirCuentaActiva(carga);
-    return { id: carga.sub, rol: carga.rol, estado: carga.estado, alojamientoId: carga.alojamientoId ?? null };
+    return { id: carga.sub, rol: carga.rol, estado: carga.estado, alojamientoId };
   }
 
   // Para las rutas del contrato, que no exigen login: si llega un token válido de una cuenta activa se usa
@@ -149,6 +151,8 @@ export class AuthService {
       apellido: u.apellido,
       rol: u.rol,
       estado: u.estado,
+      alojamientoId: u.alojamientoId ?? null,
+      requiereCambioClave: u.requiereCambioClave ?? false,
       createdAt: new Date(u.createdAt).toISOString(),
     };
   }

@@ -2,9 +2,13 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { AuditoriaService } from '../comun/auditoria.service';
+import { CuentasAlojamientoController } from './admin/cuentas-alojamiento.controller';
+import { CuentasAlojamientoService } from './admin/cuentas-alojamiento.service';
 import { UsuariosAdminController } from './admin/usuarios-admin.controller';
 import { UsuariosAdminService } from './admin/usuarios-admin.service';
+import { AislamientoAlojamientoGuard } from './seguridad/aislamiento-alojamiento.guard';
 import { Usuario } from './entities/usuario.entity';
 import { AuthController } from './seguridad/auth.controller';
 import { AuthService } from './seguridad/auth.service';
@@ -20,6 +24,7 @@ const PROVEEDORES_SEGURIDAD = [
   AuthService,
   JwtAuthGuard,
   RolesGuard,
+  AislamientoAlojamientoGuard,
   LimiteIntentosGuard,
   LimiteIntentosPorIpGuard,
   AutenticacionV2Service,
@@ -46,8 +51,23 @@ const PROVEEDORES_SEGURIDAD = [
     // Límites por defecto de las rutas que usan LimiteIntentosGuard (cada ruta fija el suyo con @Throttle). Global.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
   ],
-  controllers: [AuthController, CuentaController, UsuariosAdminController, ClavePublicaJwtController],
-  providers: [...PROVEEDORES_SEGURIDAD, UsuariosAdminService],
+  controllers: [AuthController, CuentaController, UsuariosAdminController, CuentasAlojamientoController, ClavePublicaJwtController],
+  providers: [
+    ...PROVEEDORES_SEGURIDAD,
+    UsuariosAdminService,
+    // Bloque R (R4): el catálogo (global, solo en el monolito) crea el alojamiento; en el proceso `usuarios` aparte queda sin proveedor
+    {
+      provide: CuentasAlojamientoService,
+      useFactory: (repo, ds, auditoria, auth, catalogo?) => new CuentasAlojamientoService(repo, ds, auditoria, auth, catalogo),
+      inject: [
+        getRepositoryToken(Usuario, CONEXION.usuarios),
+        getDataSourceToken(CONEXION.usuarios),
+        AuditoriaService,
+        AuthService,
+        { token: 'AlojamientosAdminService', optional: true },
+      ],
+    },
+  ],
   exports: PROVEEDORES_SEGURIDAD,
 })
 export class UsuariosModule {}
