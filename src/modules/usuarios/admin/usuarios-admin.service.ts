@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcryptjs';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
-import { EstadoUsuario, Usuario } from '../entities/usuario.entity';
+import { EstadoUsuario, RolUsuario, Usuario } from '../entities/usuario.entity';
 import { UsuarioResponseDto } from '../dto/auth/auth.dto';
-import { CambiarRolDto, FiltroUsuariosQueryDto, UsuariosPaginadosDto } from '../dto/admin/usuario-admin.dto';
-import { ConflictoException, RecursoNoEncontradoException } from '../../comun/problems/problem-details.exceptions';
+import { CuentaCreadaDto } from '../dto/admin/cuentas-alojamiento.dto';
+import { CambiarRolDto, CrearUsuarioAdminDto, FiltroUsuariosQueryDto, UsuariosPaginadosDto } from '../dto/admin/usuario-admin.dto';
+import { ConflictoException, ConsultaInvalidaException, RecursoNoEncontradoException } from '../../comun/problems/problem-details.exceptions';
 import { esUuid } from '../../comun/alojamientos-consulta.utils';
 import { AuditoriaService } from '../../comun/auditoria.service';
-import { AuthService } from '../seguridad/auth.service';
+import { AuthService, COSTE_BCRYPT } from '../seguridad/auth.service';
+import { generarClaveTemporal } from './cuentas-alojamiento.service';
 import { SesionJwt } from '../seguridad/seguridad.tipos';
 import { CONEXION } from '../../../database/conexiones';
 
@@ -42,6 +45,38 @@ export class UsuariosAdminService {
     };
   }
 
+  async crear(dto: CrearUsuarioAdminDto, actor: SesionJwt): Promise<CuentaCreadaDto> {
+    const email = dto.email.trim().toLowerCase();
+    if (await this.usuariosRepository.existsBy({ email })) {
+      throw new ConflictoException('VALIDATION_FAILED', 'Ya existe una cuenta con ese correo', [{ name: 'email', reason: 'ya está registrado' }]);
+    }
+    const alojamientoId = this.resolverAlojamientoParaRol(dto.rol, dto.alojamientoId ?? null);
+    const claveTemporal = dto.password ? undefined : generarClaveTemporal();
+    const usuario = this.usuariosRepository.create({
+      email,
+      passwordHash: await bcrypt.hash(dto.password ?? claveTemporal, COSTE_BCRYPT),
+      nombre: dto.nombre.trim(),
+      apellido: dto.apellido.trim(),
+      rol: dto.rol,
+      estado: EstadoUsuario.ACTIVO,
+      alojamientoId,
+      requiereCambioClave: claveTemporal !== undefined,
+    });
+    const guardado = await this.dataSource.transaction(async (manager) => {
+      const g = await manager.save(usuario);
+      await this.auditoria.registrar(manager, {
+        modulo: 'usuarios',
+        usuarioId: actor.id,
+        accion: 'crear_usuario_admin',
+        entidad: 'usuario',
+        entidadId: g.id,
+        despues: { email: g.email, rol: g.rol, alojamientoId: g.alojamientoId, requiereCambioClave: g.requiereCambioClave },
+      });
+      return g;
+    });
+    return { ...this.authService.aRespuesta(guardado), ...(claveTemporal && { claveTemporal }) };
+  }
+
   // pendiente -> activo. Activo: no hace nada. Suspendido: 409 (para eso está "reactivar").
   async aprobar(id: string, actor: SesionJwt): Promise<UsuarioResponseDto> {
     const usuario = await this.buscar(id);
@@ -72,12 +107,22 @@ export class UsuariosAdminService {
 
   async cambiarRol(id: string, dto: CambiarRolDto, actor: SesionJwt): Promise<UsuarioResponseDto> {
     const usuario = await this.buscar(id);
-    if (usuario.rol === dto.rol) return this.authService.aRespuesta(usuario);
-    if (usuario.id === actor.id) throw this.conflicto('No puedes cambiar tu propio rol', 'id');
-    const antes = { rol: usuario.rol };
+    if (usuario.id === actor.id && usuario.rol !== dto.rol) throw this.conflicto('No puedes cambiar tu propio rol', 'id');
+    const nuevoAlojamiento = this.resolverAlojamientoParaRol(dto.rol, dto.alojamientoId ?? usuario.alojamientoId ?? null);
+    if (usuario.rol === dto.rol && usuario.alojamientoId === nuevoAlojamiento) return this.authService.aRespuesta(usuario);
+    const antes = { rol: usuario.rol, alojamientoId: usuario.alojamientoId };
     usuario.rol = dto.rol;
-    await this.guardar(usuario, 'cambiar_rol', antes, { rol: usuario.rol }, actor);
+    usuario.alojamientoId = nuevoAlojamiento;
+    await this.guardar(usuario, 'cambiar_rol', antes, { rol: usuario.rol, alojamientoId: usuario.alojamientoId }, actor);
     return this.authService.aRespuesta(usuario);
+  }
+
+  private resolverAlojamientoParaRol(rol: RolUsuario, alojamientoId: number | null): number | null {
+    if (rol === RolUsuario.SUPERADMIN || rol === RolUsuario.CLIENTE) return null;
+    if (alojamientoId === null || !Number.isInteger(alojamientoId) || alojamientoId < 1) {
+      throw new ConsultaInvalidaException([{ name: 'alojamientoId', reason: `es obligatorio para el rol ${rol}` }], `Debes asignar un alojamiento válido para el rol ${rol}`);
+    }
+    return alojamientoId;
   }
 
   // ───────────────────────── Apoyo ─────────────────────────

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseFilters, UseGuards, UsePipes } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CambiarRolDto, FiltroUsuariosQueryDto, UsuariosPaginadosDto } from '../dto/admin/usuario-admin.dto';
+import { CambiarRolDto, CrearUsuarioAdminDto, FiltroUsuariosQueryDto, UsuariosPaginadosDto } from '../dto/admin/usuario-admin.dto';
+import { CuentaCreadaDto } from '../dto/admin/cuentas-alojamiento.dto';
 import { UsuarioResponseDto } from '../dto/auth/auth.dto';
 import { RolUsuario } from '../entities/usuario.entity';
 import { ProblemDetailsFilter } from '../../comun/problems/problem-details.filter';
@@ -35,6 +36,21 @@ export class UsuariosAdminController {
   @ApiResponse(R403)
   listar(@Query() filtro: FiltroUsuariosQueryDto) {
     return this.usuariosAdminService.listar(filtro);
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Crear usuario con rol y alojamiento asignado (solo superadmin)',
+    description: 'Para roles administrador y recepcion el alojamientoId es obligatorio. Sin password genera clave temporal.',
+  })
+  @ApiResponse({ status: 201, description: 'Usuario creado', type: CuentaCreadaDto })
+  @ApiResponse(respuestaProblema(400, 'Datos inválidos o falta alojamientoId'))
+  @ApiResponse(R401)
+  @ApiResponse(R403)
+  @ApiResponse(respuestaProblema(409, 'Ya existe una cuenta con ese correo'))
+  crear(@Body() dto: CrearUsuarioAdminDto, @UsuarioActual() actor: SesionJwt) {
+    return this.usuariosAdminService.crear(dto, actor);
   }
 
   @Post(':id/aprobar')
